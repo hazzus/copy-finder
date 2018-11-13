@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>700</width>
-    <height>400</height>
+    <width>693</width>
+    <height>410</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -37,13 +37,6 @@
       </property>
      </widget>
     </item>
-    <item row="0" column="0">
-     <widget class="QLineEdit" name="directoryPath">
-      <property name="placeholderText">
-       <string>Path to directory</string>
-      </property>
-     </widget>
-    </item>
     <item row="1" column="0" colspan="2">
      <widget class="QTextEdit" name="logger">
       <property name="enabled">
@@ -51,6 +44,13 @@
       </property>
       <property name="readOnly">
        <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="0">
+     <widget class="QLineEdit" name="directoryPath">
+      <property name="placeholderText">
+       <string>Path to directory</string>
       </property>
      </widget>
     </item>
@@ -69,19 +69,6 @@
     </item>
     <item row="3" column="0" colspan="2">
      <layout class="QHBoxLayout" name="horizontalLayout">
-      <item>
-       <widget class="QPushButton" name="stopButton">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Stop</string>
-        </property>
-       </widget>
-      </item>
       <item>
        <widget class="QPushButton" name="findCopies">
         <property name="sizePolicy">
@@ -104,12 +91,42 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>700</width>
+     <width>693</width>
      <height>30</height>
     </rect>
    </property>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
+  <action name="recurseWalk">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Walk recursively</string>
+   </property>
+  </action>
+  <action name="rawOut">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Use raw output</string>
+   </property>
+  </action>
+  <action name="warnBig">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Warn about &amp;big size</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <resources/>

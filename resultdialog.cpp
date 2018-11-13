@@ -5,7 +5,7 @@
 
 class FileTreeWidgetItem : public QTreeWidgetItem {
    public:
-    FileTreeWidgetItem(QTreeWidget* parent) : QTreeWidgetItem(parent) {}
+    FileTreeWidgetItem(QTreeWidgetItem* parent) : QTreeWidgetItem(parent) {}
 
    private:
     bool operator<(QTreeWidgetItem const& other) const {
@@ -17,30 +17,56 @@ class FileTreeWidgetItem : public QTreeWidgetItem {
     }
 };
 
-ResultDialog::ResultDialog(QWidget* parent,
-                           QMap<QByteArray, QVector<QString>>* copies,
-                           QDir const* root)
+ResultDialog::ResultDialog(QWidget* parent, QDir const* root)
     : QDialog(parent), ui(new Ui::ResultDialog), root(root) {
     ui->setupUi(this);
     ui->treeWidget->clear();
-    for (auto copyGroup : copies->keys()) {
-        if (copies->value(copyGroup).size() == 1) continue;
+    /*
+    for (auto copyGroup : *copies) {
         QTreeWidgetItem* item = new FileTreeWidgetItem(ui->treeWidget);
-
-        item->setText(0, QString(copyGroup.toHex()).left(6));
-        item->setText(1, QString::number(copies->value(copyGroup).size()));
-        for (auto file : copies->value(copyGroup)) {
+        item->setText(0, "group");
+        item->setText(1, QString::number(copyGroup.size()));
+        for (auto file : copyGroup) {
             QTreeWidgetItem* subItem = new QTreeWidgetItem(item);
             subItem->setText(0, root->relativeFilePath(file));
             item->addChild(subItem);
         }
-        ui->treeWidget->addTopLevelItem(item);
     }
     ui->treeWidget->setSortingEnabled(true);
     ui->treeWidget->sortItems(1, Qt::DescendingOrder);
+    */
 }
 
 ResultDialog::~ResultDialog() { delete ui; }
+
+void ResultDialog::appendData(
+    std::map<xxh::hash64_t, std::vector<std::string>>* hashes,
+    qint64 fileSize) {
+    QTreeWidgetItem* globalItem = new QTreeWidgetItem();
+    globalItem->setText(0, QString("Files of size %1 bytes").arg(fileSize));
+    for (auto copyGroup : *hashes) {
+        size_t groupSize = copyGroup.second.size();
+        if (groupSize == 1) continue;
+
+        QTreeWidgetItem* item = new FileTreeWidgetItem(globalItem);
+        item->setText(0, QString::number(copyGroup.first));
+        item->setText(1, QString::number(groupSize));
+        for (auto file : copyGroup.second) {
+            QTreeWidgetItem* subItem = new QTreeWidgetItem(item);
+            subItem->setText(
+                0, root->relativeFilePath(QString::fromStdString(file)));
+            item->addChild(subItem);
+        }
+
+        globalItem->addChild(item);
+    }
+    if (globalItem->childCount() > 0) {
+        globalItem->sortChildren(1, Qt::DescendingOrder);
+        ui->treeWidget->addTopLevelItem(globalItem);
+    } else {
+        delete globalItem;
+    }
+}
 
 void ResultDialog::on_returnButton_clicked() { close(); }
 

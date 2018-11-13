@@ -5,11 +5,13 @@
 #include <QCryptographicHash>
 #include <QDirIterator>
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QMainWindow>
-#include <QMap>
 #include <QMessageBox>
-#include <thread>
+#include <QTime>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include "xxhash.hpp"
 
 namespace Ui {
 class MainWindow;
@@ -29,11 +31,6 @@ class MainWindow : public QMainWindow {
 
    private:
     Ui::MainWindow* ui;
-
-    void startRecursiveHashing(QDir const& dir);
-
-    void recursiveHash(QDir const& dir,
-                       QMap<QByteArray, QVector<QString>>& hashes);
 };
 
 #endif  // MAINWINDOW_H

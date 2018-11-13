@@ -5,9 +5,9 @@
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
-#include <QMap>
 #include <QMessageBox>
 #include <QTreeWidgetItem>
+#include <xxhash.hpp>
 
 namespace Ui {
 class ResultDialog;
@@ -18,9 +18,11 @@ class ResultDialog : public QDialog {
 
    public:
     explicit ResultDialog(QWidget *parent = nullptr,
-                          QMap<QByteArray, QVector<QString>> *copies = nullptr,
                           QDir const *origin = nullptr);
     ~ResultDialog();
+
+    void appendData(std::map<xxh::hash64_t, std::vector<std::string>> *hashes,
+                    qint64 fileSize);
 
    private slots:
     void on_returnButton_clicked();

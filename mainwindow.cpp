@@ -1,9 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-#include <QFuture>
-#include <QtConcurrent/QtConcurrent>
-
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
     ui->setupUi(this);
@@ -20,86 +17,32 @@ void MainWindow::on_selectDirectory_clicked() {
     ui->progressBar->setValue(0);
 }
 
-int countAll(QDir const& dir) {
-    int result = 0;
-    QDirIterator it(dir);
+std::map<qint64, std::vector<std::string>> listUniqueFilesBySize(
+    QDir const& dir) {
+    std::map<qint64, std::vector<std::string>> fileGroups;
+    QDirIterator it(dir, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         it.next();
-        if (it.fileInfo().isDir()) {
-            if (it.fileName() != "." && it.fileName() != "..")
-                result += countAll(QDir(it.filePath()));
+        qint64 fileSize = it.fileInfo().size();
+        if (fileGroups.find(fileSize) == fileGroups.end()) {
+            fileGroups.insert({fileSize, std::vector<std::string>(
+                                             1, it.filePath().toStdString())});
         } else {
-            result++;
+            fileGroups[fileSize].push_back(it.filePath().toStdString());
         }
     }
-    return result;
+    return fileGroups;
 }
 
-void MainWindow::recursiveHash(QDir const& dir,
-                               QMap<QByteArray, QVector<QString>>& hashes) {
-    QDirIterator it(dir);
-    while (it.hasNext()) {
-        it.next();
-        ui->progressBar->setValue(ui->progressBar->value() + 1);
-        if (it.fileInfo().isDir()) {
-            if (it.fileName() != "." && it.fileName() != "..")
-                recursiveHash(QDir(it.filePath()), hashes);
-        } else {
-            QFile f(it.filePath());
-            if (f.open(QFile::ReadOnly)) {
-                QCryptographicHash hash(QCryptographicHash::Sha256);
-                hash.addData(&f);
-                QByteArray result = hash.result();
-                if (hashes.find(result) == hashes.end()) {
-                    hashes.insert(result, QVector<QString>(1, f.fileName()));
-                } else {
-                    hashes[result].push_back(f.fileName());
-                    ui->logger->append(f.fileName() + " is a copy");
-                }
-            }
-        }
-    }
-}
-
-void MainWindow::startRecursiveHashing(QDir const& dir) {
-    ui->progressBar->setValue(0);
-    ui->logger->insertHtml(QString("Starting process for %1").arg(dir.path()));
-    ui->logger->append("Counting files in directory...");
-    int amount = countAll(dir);
-    if (amount > 5000) {
-        QMessageBox question;
-        question.setText(
-            QString(
-                "There is %1 files in this directory, operation might take a "
-                "long time.")
-                .arg(amount));
-        question.setInformativeText(
-            "Are you sure you want to find all copies in this directory?");
-        question.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-        question.setDefaultButton(QMessageBox::Cancel);
-        int ret = question.exec();
-        if (ret == QMessageBox::Cancel) {
-            ui->logger->append("Process canceled by user");
-            return;
-        }
-    }
-
-    ui->progressBar->setMaximum(amount);
-
-    QMap<QByteArray, QVector<QString>> hashes;
-
-    // QFuture<void> f = QtConcurrent::run(recursiveHash, dir, hashes);
-
-    recursiveHash(dir, hashes);
-
-    ui->logger->append("Process finished");
-
-    ResultDialog result(nullptr, &hashes, &dir);
-    result.exec();
-}
-
+// Algorithm:
+//      1. Go through the path recursively, count files amount and create map
+//      sorted by size
+//      2. If 1 in map[key_size] then skip
+//      3. Walk over file groups and count map of hashes
+//      3. Create result
 void MainWindow::on_findCopies_clicked() {
     ui->logger->clear();
+    ui->progressBar->reset();
     QString path = ui->directoryPath->text();
     QDir directory(path);
     if (!directory.exists()) {
@@ -107,6 +50,44 @@ void MainWindow::on_findCopies_clicked() {
             "<div style=\"color: red;\"><b>WARNING:</b> No such "
             "directory</div>");
     } else {
-        startRecursiveHashing(directory);
+        // Start hashing and so on
+        ui->logger->append("Starting process...");
+        directory.setFilter(QDir::Hidden | QDir::Files);
+        ui->logger->append("Counting files...");
+        QTime timer;
+        timer.start();
+        auto fileGroups = listUniqueFilesBySize(directory);
+
+        ui->progressBar->setMaximum(fileGroups.size());
+
+        ResultDialog resDia(this, &directory);
+        for (auto group : fileGroups) {
+            ui->progressBar->setValue(ui->progressBar->value() + 1);
+            if (group.second.size() == 1) continue;
+
+            // TODO empty files optimization
+            std::map<xxh::hash64_t, std::vector<std::string>> hashes;
+
+            xxh::hash_state64_t hash_stream;
+            for (std::string filename : group.second) {
+                hash_stream.reset();
+                std::ifstream file(filename, std::ios::binary);
+                std::vector<unsigned char> buffer(
+                    std::istreambuf_iterator<char>(file), {});
+                hash_stream.update(buffer);
+                xxh::hash64_t result = hash_stream.digest();
+                if (hashes.find(result) == hashes.end()) {
+                    hashes.insert(
+                        {result, std::vector<std::string>(1, filename)});
+                } else {
+                    // TODO byte-compare if collision
+                    hashes[result].push_back(filename);
+                }
+            }
+            resDia.appendData(&hashes, group.first);
+        }
+        ui->logger->append(QString("Process finished in %1 seconds")
+                               .arg(timer.elapsed() / 1000.0));
+        resDia.exec();
     }
 }
