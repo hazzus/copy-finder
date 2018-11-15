@@ -1,16 +1,13 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <resultdialog.h>
-#include <QCryptographicHash>
 #include <QDirIterator>
 #include <QFileDialog>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QTime>
-#include <fstream>
-#include <iterator>
 #include <map>
+#include "reader.h"
 #include "xxhash.hpp"
 
 namespace Ui {
@@ -31,6 +28,11 @@ class MainWindow : public QMainWindow {
 
    private:
     Ui::MainWindow* ui;
+
+    void addItemToTree(
+        qint64 fileSize,
+        std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
+        QDir const& dir);
 };
 
 #endif  // MAINWINDOW_H

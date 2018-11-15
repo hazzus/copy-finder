@@ -1,6 +1,11 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+// Only for beta
+#include <fstream>
+#include <iostream>
+#include <iterator>
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
     ui->setupUi(this);
@@ -17,21 +22,59 @@ void MainWindow::on_selectDirectory_clicked() {
     ui->progressBar->setValue(0);
 }
 
-std::map<qint64, std::vector<std::string>> listUniqueFilesBySize(
-    QDir const& dir) {
-    std::map<qint64, std::vector<std::string>> fileGroups;
-    QDirIterator it(dir, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        it.next();
-        qint64 fileSize = it.fileInfo().size();
-        if (fileGroups.find(fileSize) == fileGroups.end()) {
-            fileGroups.insert({fileSize, std::vector<std::string>(
-                                             1, it.filePath().toStdString())});
+std::map<qint64, std::vector<std::string>> groupFilesBySize(
+    QDir const& directory) {
+    std::map<qint64, std::vector<std::string>> result;
+    QDirIterator fs_it(directory, QDirIterator::Subdirectories);
+    while (fs_it.hasNext()) {
+        fs_it.next();
+        qint64 fileSize = fs_it.fileInfo().size();
+        auto it = result.find(fileSize);
+        if (it == result.end()) {
+            result.insert({fileSize, std::vector<std::string>(
+                                         1, fs_it.filePath().toStdString())});
         } else {
-            fileGroups[fileSize].push_back(it.filePath().toStdString());
+            (*it).second.push_back(fs_it.filePath().toStdString());
         }
     }
-    return fileGroups;
+    return result;
+}
+
+// Now takes non-cryptographic xxHash, can be changed
+xxh::hash64_t takeHashOfFile(std::string filename) {
+    xxh::hash_state64_t hash_stream;
+    /*
+    reader in(filename);
+    while (!in.eof()) {
+        hash_stream.update(in.read_byte_data(2048));
+    } // WHY THIS ISN'T WORKING??
+    */
+    std::ifstream file(filename, std::ios::binary);
+    std::vector<unsigned char> buffer(std::istreambuf_iterator<char>(file),
+                                      std::istreambuf_iterator<char>{});
+    hash_stream.update(buffer);
+    // iterators are slow + this is overloading memory
+    return hash_stream.digest();
+}
+
+void MainWindow::addItemToTree(
+    qint64 fileSize,
+    std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
+    QDir const& dir) {
+    QTreeWidgetItem* treeItem = new QTreeWidgetItem(ui->treeWidget);
+    treeItem->setText(0, QString::number(fileSize));
+    for (auto copies : hashes) {
+        if (copies.second.size() == 1) continue;
+        QTreeWidgetItem* item = new QTreeWidgetItem(treeItem);
+        item->setText(0, QString::number(copies.first));
+        item->setText(1, QString::number(copies.second.size()));
+        for (std::string file : copies.second) {
+            QTreeWidgetItem* subItem = new QTreeWidgetItem(item);
+            subItem->setText(
+                0, dir.relativeFilePath(QString::fromStdString(file)));
+        }
+    }
+    if (treeItem->childCount() == 0) delete treeItem;
 }
 
 // Algorithm:
@@ -39,55 +82,51 @@ std::map<qint64, std::vector<std::string>> listUniqueFilesBySize(
 //      sorted by size
 //      2. If 1 in map[key_size] then skip
 //      3. Walk over file groups and count map of hashes
-//      3. Create result
+//      4. Create result
 void MainWindow::on_findCopies_clicked() {
-    ui->logger->clear();
-    ui->progressBar->reset();
-    QString path = ui->directoryPath->text();
-    QDir directory(path);
+    QDir directory(ui->directoryPath->text());
     if (!directory.exists()) {
-        ui->logger->insertHtml(
-            "<div style=\"color: red;\"><b>WARNING:</b> No such "
-            "directory</div>");
+        QMessageBox warning;
+        warning.setText("No such directory! Select another one!");
+        warning.exec();
     } else {
-        // Start hashing and so on
-        ui->logger->append("Starting process...");
-        directory.setFilter(QDir::Hidden | QDir::Files);
-        ui->logger->append("Counting files...");
+        // preparations
+        ui->progressBar->reset();
+        ui->treeWidget->clear();
+        directory.setFilter(QDir::Files | QDir::Hidden);
         QTime timer;
         timer.start();
-        auto fileGroups = listUniqueFilesBySize(directory);
 
-        ui->progressBar->setMaximum(fileGroups.size());
+        // Counting and sorting
+        auto fileGroups = groupFilesBySize(directory);
+        ui->progressBar->setMaximum(fileGroups.size() - 1);
 
-        ResultDialog resDia(this, &directory);
+        // Hashing
         for (auto group : fileGroups) {
             ui->progressBar->setValue(ui->progressBar->value() + 1);
-            if (group.second.size() == 1) continue;
+            if (group.second.size() == 1)
+                continue;  // TODO is it optimisation to kick it out for branchh
+                           // prediction?
 
-            // TODO empty files optimization
-            std::map<xxh::hash64_t, std::vector<std::string>> hashes;
+            std::map<xxh::hash64_t, std::vector<std::string>>
+                hashes;  // maybe put in map QTreeWidgetItem* ?
 
-            xxh::hash_state64_t hash_stream;
             for (std::string filename : group.second) {
-                hash_stream.reset();
-                std::ifstream file(filename, std::ios::binary);
-                std::vector<unsigned char> buffer(
-                    std::istreambuf_iterator<char>(file), {});
-                hash_stream.update(buffer);
-                xxh::hash64_t result = hash_stream.digest();
-                if (hashes.find(result) == hashes.end()) {
-                    hashes.insert(
-                        {result, std::vector<std::string>(1, filename)});
+                xxh::hash64_t hash = takeHashOfFile(filename);
+                auto it = hashes.find(hash);
+                if (it == hashes.end()) {
+                    std::vector<std::string> files(
+                        1, filename);  // maybe it is slowdown??
+                    files.reserve(group.second.size());
+                    hashes.insert({hash, files});
                 } else {
-                    // TODO byte-compare if collision
-                    hashes[result].push_back(filename);
+                    // TODO compare bytes
+                    (*it).second.push_back(filename);
                 }
             }
-            resDia.appendData(&hashes, group.first);
+            addItemToTree(group.first, hashes, directory);
+            // TODO add to result
         }
-        ui->logger->append(QString("Process finished in %1 seconds")
-                               .arg(timer.elapsed() / 1000.0));
-        resDia.exec();
+        std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
     }
 }
