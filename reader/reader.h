@@ -16,7 +16,7 @@ class reader {
         }
     }
 
-    std::vector<unsigned char> read_byte_data(size_t amount);
+    std::vector<char> read_byte_data(size_t amount);
 
     ~reader() { in.close(); }
 

@@ -6,6 +6,8 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QTime>
+#include <QTreeWidgetItem>
+#include <QDesktopServices>
 #include <map>
 #include "reader.h"
 #include "xxhash.hpp"
@@ -26,7 +28,9 @@ class MainWindow : public QMainWindow {
 
     void on_findCopies_clicked();
 
-   private:
+    void on_treeWidget_itemClicked(QTreeWidgetItem *item, int column);
+
+private:
     Ui::MainWindow* ui;
 
     void addItemToTree(

@@ -51,10 +51,10 @@ xxh::hash64_t takeHashOfFile(std::string filename) {
 }
 
 bool byteCompare(std::string orig, std::string dup) {
-    reader o(orig);
-    reader d(dup);
-    while (!o.eof() && !d.eof()) {
-        if (o.read_byte_data(2048) != d.read_byte_data(2048)) return false;
+    reader original(orig);
+    reader duplicate(dup);
+    while (!original.eof() && !duplicate.eof()) {
+        if (original.read_byte_data(2048) != duplicate.read_byte_data(2048)) return false;
     }
     return true;
 }
@@ -64,7 +64,7 @@ void MainWindow::addItemToTree(
     std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
     QDir const& dir) {
     QTreeWidgetItem* treeItem = new QTreeWidgetItem(ui->treeWidget);
-    treeItem->setText(0, QString::number(fileSize));
+    treeItem->setText(0, QString("%1 bytes").arg(fileSize));
     for (auto copies : hashes) {
         if (copies.second.size() == 1) continue;
         QTreeWidgetItem* item = new QTreeWidgetItem(treeItem);
@@ -120,7 +120,7 @@ void MainWindow::on_findCopies_clicked() {
                     hashes.insert(
                         {hash, std::vector<std::string>(1, filename)});
                 } else {
-                    // TODO compare bytes
+                    // Do we really need to compare them by bytes?
                     if (byteCompare((*it).second[0], filename))
                         (*it).second.push_back(filename);
                 }
@@ -128,5 +128,18 @@ void MainWindow::on_findCopies_clicked() {
             addItemToTree(group.first, hashes, directory);
         }
         std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
+    }
+}
+
+void MainWindow::on_treeWidget_itemClicked(QTreeWidgetItem *item, int column)
+{
+    size_t d = 0;
+    auto itemCopy = item;
+    for (;itemCopy != nullptr; d++, itemCopy = itemCopy->parent());
+    std::cout << d << std::endl;
+    if (d == 3) {
+        QString path = ui->directoryPath->text() + QString::fromStdString("/") + item->text(0);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path.left(path.lastIndexOf('/'))));
     }
 }
