@@ -1,8 +1,10 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-#include <QFuture>
-#include <QtConcurrent/QtConcurrent>
+// Only for beta
+#include <fstream>
+#include <iostream>
+#include <iterator>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
@@ -20,93 +22,111 @@ void MainWindow::on_selectDirectory_clicked() {
     ui->progressBar->setValue(0);
 }
 
-int countAll(QDir const& dir) {
-    int result = 0;
-    QDirIterator it(dir);
-    while (it.hasNext()) {
-        it.next();
-        if (it.fileInfo().isDir()) {
-            if (it.fileName() != "." && it.fileName() != "..")
-                result += countAll(QDir(it.filePath()));
+std::map<qint64, std::vector<std::string>> groupFilesBySize(
+    QDir const& directory) {
+    std::map<qint64, std::vector<std::string>> result;
+    QDirIterator fs_it(directory, QDirIterator::Subdirectories);
+    while (fs_it.hasNext()) {
+        fs_it.next();
+        qint64 fileSize = fs_it.fileInfo().size();
+        auto it = result.find(fileSize);
+        if (it == result.end()) {
+            result.insert({fileSize, std::vector<std::string>(
+                                         1, fs_it.filePath().toStdString())});
         } else {
-            result++;
+            (*it).second.push_back(fs_it.filePath().toStdString());
         }
     }
     return result;
 }
 
-void MainWindow::recursiveHash(QDir const& dir,
-                               QMap<QByteArray, QVector<QString>>& hashes) {
-    QDirIterator it(dir);
-    while (it.hasNext()) {
-        it.next();
-        ui->progressBar->setValue(ui->progressBar->value() + 1);
-        if (it.fileInfo().isDir()) {
-            if (it.fileName() != "." && it.fileName() != "..")
-                recursiveHash(QDir(it.filePath()), hashes);
-        } else {
-            QFile f(it.filePath());
-            if (f.open(QFile::ReadOnly)) {
-                QCryptographicHash hash(QCryptographicHash::Sha256);
-                hash.addData(&f);
-                QByteArray result = hash.result();
-                if (hashes.find(result) == hashes.end()) {
-                    hashes.insert(result, QVector<QString>(1, f.fileName()));
+// Now takes non-cryptographic xxHash, can be changed
+xxh::hash64_t takeHashOfFile(std::string filename) {
+    xxh::hash_state64_t hash_stream;
+    reader in(filename);
+    while (!in.eof()) {
+        hash_stream.update(in.read_byte_data(2048));
+    }
+    return hash_stream.digest();
+}
+
+bool byteCompare(std::string orig, std::string dup) {
+    reader o(orig);
+    reader d(dup);
+    while (!o.eof() && !d.eof()) {
+        if (o.read_byte_data(2048) != d.read_byte_data(2048)) return false;
+    }
+    return true;
+}
+
+void MainWindow::addItemToTree(
+    qint64 fileSize,
+    std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
+    QDir const& dir) {
+    QTreeWidgetItem* treeItem = new QTreeWidgetItem(ui->treeWidget);
+    treeItem->setText(0, QString::number(fileSize));
+    for (auto copies : hashes) {
+        if (copies.second.size() == 1) continue;
+        QTreeWidgetItem* item = new QTreeWidgetItem(treeItem);
+        item->setText(0, QString::number(copies.first));
+        item->setText(1, QString::number(copies.second.size()));
+        for (std::string file : copies.second) {
+            QTreeWidgetItem* subItem = new QTreeWidgetItem(item);
+            subItem->setText(
+                0, dir.relativeFilePath(QString::fromStdString(file)));
+        }
+    }
+    if (treeItem->childCount() == 0) delete treeItem;
+}
+
+// Algorithm:
+//      1. Go through the path recursively, count files amount and create map
+//      sorted by size
+//      2. If 1 in map[key_size] then skip
+//      3. Walk over file groups and count map of hashes
+//      4. Create result
+void MainWindow::on_findCopies_clicked() {
+    QDir directory(ui->directoryPath->text());
+    if (!directory.exists()) {
+        QMessageBox warning;
+        warning.setText("No such directory! Select another one!");
+        warning.exec();
+    } else {
+        // preparations
+        ui->progressBar->reset();
+        ui->treeWidget->clear();
+        directory.setFilter(QDir::Files | QDir::Hidden);
+        QTime timer;
+        timer.start();
+
+        // Counting and sorting
+        auto fileGroups = groupFilesBySize(directory);
+        ui->progressBar->setMaximum(fileGroups.size() - 1);
+
+        // Hashing
+        for (auto group : fileGroups) {
+            ui->progressBar->setValue(ui->progressBar->value() + 1);
+            if (group.second.size() == 1)
+                continue;  // TODO is it optimisation to kick it out for branchh
+                           // prediction?
+
+            std::map<xxh::hash64_t, std::vector<std::string>>
+                hashes;  // maybe put in map QTreeWidgetItem* ?
+
+            for (std::string filename : group.second) {
+                xxh::hash64_t hash = takeHashOfFile(filename);
+                auto it = hashes.find(hash);
+                if (it == hashes.end()) {
+                    hashes.insert(
+                        {hash, std::vector<std::string>(1, filename)});
                 } else {
-                    hashes[result].push_back(f.fileName());
-                    ui->logger->append(f.fileName() + " is a copy");
+                    // TODO compare bytes
+                    if (byteCompare((*it).second[0], filename))
+                        (*it).second.push_back(filename);
                 }
             }
+            addItemToTree(group.first, hashes, directory);
         }
-    }
-}
-
-void MainWindow::startRecursiveHashing(QDir const& dir) {
-    ui->progressBar->setValue(0);
-    ui->logger->insertHtml(QString("Starting process for %1").arg(dir.path()));
-    ui->logger->append("Counting files in directory...");
-    int amount = countAll(dir);
-    if (amount > 5000) {
-        QMessageBox question;
-        question.setText(
-            QString(
-                "There is %1 files in this directory, operation might take a "
-                "long time.")
-                .arg(amount));
-        question.setInformativeText(
-            "Are you sure you want to find all copies in this directory?");
-        question.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-        question.setDefaultButton(QMessageBox::Cancel);
-        int ret = question.exec();
-        if (ret == QMessageBox::Cancel) {
-            ui->logger->append("Process canceled by user");
-            return;
-        }
-    }
-
-    ui->progressBar->setMaximum(amount);
-
-    QMap<QByteArray, QVector<QString>> hashes;
-
-    // QFuture<void> f = QtConcurrent::run(recursiveHash, dir, hashes);
-
-    recursiveHash(dir, hashes);
-
-    ui->logger->append("Process finished");
-
-    ResultDialog result(nullptr, &hashes, &dir);
-    result.exec();
-}
-
-void MainWindow::on_findCopies_clicked() {
-    ui->logger->clear();
-    QString path = ui->directoryPath->text();
-    QDir directory(path);
-    if (!directory.exists()) {
-        ui->logger->insertHtml(
-            "<div style=\"color: red;\"><b>WARNING:</b> No such "
-            "directory</div>");
-    } else {
-        startRecursiveHashing(directory);
+        std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
     }
 }

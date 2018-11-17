@@ -1,15 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <resultdialog.h>
-#include <QCryptographicHash>
 #include <QDirIterator>
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QMainWindow>
-#include <QMap>
 #include <QMessageBox>
-#include <thread>
+#include <QTime>
+#include <map>
+#include "reader.h"
+#include "xxhash.hpp"
 
 namespace Ui {
 class MainWindow;
@@ -30,10 +29,10 @@ class MainWindow : public QMainWindow {
    private:
     Ui::MainWindow* ui;
 
-    void startRecursiveHashing(QDir const& dir);
-
-    void recursiveHash(QDir const& dir,
-                       QMap<QByteArray, QVector<QString>>& hashes);
+    void addItemToTree(
+        qint64 fileSize,
+        std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
+        QDir const& dir);
 };
 
 #endif  // MAINWINDOW_H
