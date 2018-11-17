@@ -39,10 +39,10 @@
        </sizepolicy>
       </property>
       <attribute name="headerDefaultSectionSize">
-       <number>400</number>
+       <number>50</number>
       </attribute>
       <attribute name="headerMinimumSectionSize">
-       <number>650</number>
+       <number>50</number>
       </attribute>
       <column>
        <property name="text">
