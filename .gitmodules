@@ -1,0 +1,3 @@
+[submodule "xxhash_cpp"]
+	path = xxhash_cpp
+	url = https://github.com/RedSpah/xxhash_cpp
