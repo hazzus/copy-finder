@@ -38,6 +38,12 @@
         <verstretch>0</verstretch>
        </sizepolicy>
       </property>
+      <attribute name="headerDefaultSectionSize">
+       <number>400</number>
+      </attribute>
+      <attribute name="headerMinimumSectionSize">
+       <number>650</number>
+      </attribute>
       <column>
        <property name="text">
         <string>File size</string>
@@ -107,36 +113,6 @@
    </property>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
-  <action name="recurseWalk">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>&amp;Walk recursively</string>
-   </property>
-  </action>
-  <action name="rawOut">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>&amp;Use raw output</string>
-   </property>
-  </action>
-  <action name="warnBig">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>false</bool>
-   </property>
-   <property name="text">
-    <string>Warn about &amp;big size</string>
-   </property>
-  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <resources/>

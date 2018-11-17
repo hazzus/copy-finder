@@ -43,18 +43,20 @@ std::map<qint64, std::vector<std::string>> groupFilesBySize(
 // Now takes non-cryptographic xxHash, can be changed
 xxh::hash64_t takeHashOfFile(std::string filename) {
     xxh::hash_state64_t hash_stream;
-    /*
     reader in(filename);
     while (!in.eof()) {
         hash_stream.update(in.read_byte_data(2048));
-    } // WHY THIS ISN'T WORKING??
-    */
-    std::ifstream file(filename, std::ios::binary);
-    std::vector<unsigned char> buffer(std::istreambuf_iterator<char>(file),
-                                      std::istreambuf_iterator<char>{});
-    hash_stream.update(buffer);
-    // iterators are slow + this is overloading memory
+    }
     return hash_stream.digest();
+}
+
+bool byteCompare(std::string orig, std::string dup) {
+    reader o(orig);
+    reader d(dup);
+    while (!o.eof() && !d.eof()) {
+        if (o.read_byte_data(2048) != d.read_byte_data(2048)) return false;
+    }
+    return true;
 }
 
 void MainWindow::addItemToTree(
@@ -115,17 +117,15 @@ void MainWindow::on_findCopies_clicked() {
                 xxh::hash64_t hash = takeHashOfFile(filename);
                 auto it = hashes.find(hash);
                 if (it == hashes.end()) {
-                    std::vector<std::string> files(
-                        1, filename);  // maybe it is slowdown??
-                    files.reserve(group.second.size());
-                    hashes.insert({hash, files});
+                    hashes.insert(
+                        {hash, std::vector<std::string>(1, filename)});
                 } else {
                     // TODO compare bytes
-                    (*it).second.push_back(filename);
+                    if (byteCompare((*it).second[0], filename))
+                        (*it).second.push_back(filename);
                 }
             }
             addItemToTree(group.first, hashes, directory);
-            // TODO add to result
         }
         std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
     }
