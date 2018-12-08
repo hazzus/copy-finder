@@ -8,8 +8,9 @@
 #include <QTime>
 #include <QTreeWidgetItem>
 #include <QDesktopServices>
+#include <QThread>
 #include <map>
-#include "reader.h"
+#include "hashingthread.h"
 #include "xxhash.hpp"
 
 namespace Ui {
@@ -30,13 +31,20 @@ class MainWindow : public QMainWindow {
 
     void on_treeWidget_itemClicked(QTreeWidgetItem *item, int column);
 
-private:
-    Ui::MainWindow* ui;
+    void on_stopButton_clicked();
 
+public slots:
+    void clearBar(size_t count);
+    void incBar();
     void addItemToTree(
         qint64 fileSize,
-        std::map<xxh::hash64_t, std::vector<std::string>> const& hashes,
+        map_hash_t const& hashes,
         QDir const& dir);
+    void disableStop();
+
+   private:
+    Ui::MainWindow* ui;
+    QThread* hashThread;
 };
 
 #endif  // MAINWINDOW_H

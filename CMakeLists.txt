@@ -21,7 +21,7 @@ add_library(reader reader/reader.h reader/reader.cpp)
 include_directories(xxhash_cpp/xxhash reader)
 
 add_executable(CopyFinder main.cpp
-    mainwindow.h mainwindow.cpp)
+    mainwindow.h mainwindow.cpp hashingthread.cpp hashingthread.h)
 
 target_link_libraries(CopyFinder xxhash -lpthread)
 target_link_libraries(CopyFinder reader -lpthread)
