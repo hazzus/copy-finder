@@ -14,13 +14,13 @@ bool byteCompare(std::string orig, std::string dup) {
 }
 
 // Now takes non-cryptographic xxHash, can be changed
-std::pair<QString, xxh::hash64_t> takeHashOfFile(QString filename) {
+std::pair<std::string, xxh::hash64_t> takeHashOfFile(QString filename) {
     xxh::hash_state64_t hash_stream;
     reader in(filename.toStdString());
     while (!in.eof()) {
         hash_stream.update(in.read_byte_data(2048));
     }
-    return {filename, hash_stream.digest()};
+    return {filename.toStdString(), hash_stream.digest()};
 }
 
 QMap<qint64, QVector<QString>> groupFilesBySize(
@@ -41,15 +41,15 @@ QMap<qint64, QVector<QString>> groupFilesBySize(
 }
 
 
-void addToMap(std::map<xxh::hash64_t, std::vector<std::string>>& hashes, std::pair<QString, xxh::hash64_t> const& info) {
+void addToMap(std::map<xxh::hash64_t, std::vector<std::string>>& hashes, std::pair<std::string, xxh::hash64_t> const& info) {
     try {
         auto it = hashes.find(info.second);
         if (it == hashes.end()) {
-            hashes.insert({info.second, std::vector<std::string>(1, info.first.toStdString())});
+            hashes.insert({info.second, std::vector<std::string>(1, info.first)});
         } else {
             // Do we really need to compare them by bytes?
-            if (byteCompare((*it).second[0], info.first.toStdString()))
-                (*it).second.push_back(info.first.toStdString());
+            if (byteCompare((*it).second[0], info.first))
+                (*it).second.push_back(info.first);
         }
     } catch(std::runtime_error& e) {
         std::cerr << e.what() << std::endl;
@@ -80,22 +80,24 @@ void HashingThread::process() {
         emit prepareProgressBar(fileGroups.size() - 1);
 
         // Hashing
-        for (auto group : fileGroups.toStdMap()) {
+        for (auto groupKey : fileGroups.keys()) {
             if (QThread::currentThread()->isInterruptionRequested()) break;
+            auto value = fileGroups.value(groupKey);
             emit increaseProgressBar();
-            if (group.second.size() == 1)
+            if (value.size() == 1)
                 continue;  // TODO is it optimisation to kick it out for branchh
                            // prediction?
             // maybe put in map QTreeWidgetItem* ?
 
             // THIS IS THREADING
-            QFuture<std::map<xxh::hash64_t, std::vector<std::string>>> hashFuture = QtConcurrent::mappedReduced(group.second.begin(), group.second.end(), takeHashOfFile, addToMap);
+            QFuture<std::map<xxh::hash64_t, std::vector<std::string>>> hashFuture = QtConcurrent::mappedReduced(value, takeHashOfFile, addToMap);
 
             // send signal to add item to tree
             // TODO get key
             hashFuture.waitForFinished();
+
             auto hashes = hashFuture.result();
-            emit changeTree(group.first, hashes, directory);
+            emit changeTree(groupKey, hashes, directory);
         }
         std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
     }
