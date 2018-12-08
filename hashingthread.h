@@ -9,6 +9,10 @@
 #include <QDirIterator>
 #include <QMetaType>
 #include <QThread>
+#include <QMap>
+#include <QVector>
+#include <QFuture>
+#include <QtConcurrent/QtConcurrent>
 #include <math.h>
 #include "reader.h"
 #include "xxhash.hpp"
@@ -21,7 +25,6 @@ class HashingThread : public QObject {
 
 private:
     QString dirname;
-
 public:
     HashingThread(QString dirname);
     ~HashingThread();

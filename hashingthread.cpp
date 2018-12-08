@@ -14,32 +14,48 @@ bool byteCompare(std::string orig, std::string dup) {
 }
 
 // Now takes non-cryptographic xxHash, can be changed
-xxh::hash64_t takeHashOfFile(std::string filename) {
+std::pair<QString, xxh::hash64_t> takeHashOfFile(QString filename) {
     xxh::hash_state64_t hash_stream;
-    reader in(filename);
+    reader in(filename.toStdString());
     while (!in.eof()) {
         hash_stream.update(in.read_byte_data(2048));
     }
-    return hash_stream.digest();
+    return {filename, hash_stream.digest()};
 }
 
-std::map<qint64, std::vector<std::string>> groupFilesBySize(
+QMap<qint64, QVector<QString>> groupFilesBySize(
     QDir const& directory) {
-    std::map<qint64, std::vector<std::string>> result;
+    QMap<qint64, QVector<QString>> result;
     QDirIterator fs_it(directory, QDirIterator::Subdirectories);
     while (fs_it.hasNext()) {
         fs_it.next();
         qint64 fileSize = fs_it.fileInfo().size();
         auto it = result.find(fileSize);
         if (it == result.end()) {
-            result.insert({fileSize, std::vector<std::string>(
-                                         1, fs_it.filePath().toStdString())});
+            result.insert(fileSize, QVector<QString>(1, fs_it.filePath()));
         } else {
-            (*it).second.push_back(fs_it.filePath().toStdString());
+            it->push_back(fs_it.filePath());
         }
     }
     return result;
 }
+
+
+void addToMap(std::map<xxh::hash64_t, std::vector<std::string>>& hashes, std::pair<QString, xxh::hash64_t> const& info) {
+    try {
+        auto it = hashes.find(info.second);
+        if (it == hashes.end()) {
+            hashes.insert({info.second, std::vector<std::string>(1, info.first.toStdString())});
+        } else {
+            // Do we really need to compare them by bytes?
+            if (byteCompare((*it).second[0], info.first.toStdString()))
+                (*it).second.push_back(info.first.toStdString());
+        }
+    } catch(std::runtime_error& e) {
+        std::cerr << e.what() << std::endl;
+    }
+}
+
 
 // Algorithm:
 //      1. Go through the path recursively, count files amount and create map
@@ -64,34 +80,21 @@ void HashingThread::process() {
         emit prepareProgressBar(fileGroups.size() - 1);
 
         // Hashing
-        for (auto group : fileGroups) {
+        for (auto group : fileGroups.toStdMap()) {
             if (QThread::currentThread()->isInterruptionRequested()) break;
             emit increaseProgressBar();
             if (group.second.size() == 1)
                 continue;  // TODO is it optimisation to kick it out for branchh
                            // prediction?
+            // maybe put in map QTreeWidgetItem* ?
 
-            std::map<xxh::hash64_t, std::vector<std::string>>
-                hashes;  // maybe put in map QTreeWidgetItem* ?
+            // THIS IS THREADING
+            QFuture<std::map<xxh::hash64_t, std::vector<std::string>>> hashFuture = QtConcurrent::mappedReduced(group.second.begin(), group.second.end(), takeHashOfFile, addToMap);
 
-            for (std::string filename : group.second) {
-                if (QThread::currentThread()->isInterruptionRequested()) break;
-                try {
-                    xxh::hash64_t hash = takeHashOfFile(filename);
-                    auto it = hashes.find(hash);
-                    if (it == hashes.end()) {
-                        hashes.insert(
-                            {hash, std::vector<std::string>(1, filename)});
-                    } else {
-                        // Do we really need to compare them by bytes?
-                        if (byteCompare((*it).second[0], filename))
-                            (*it).second.push_back(filename);
-                    }
-                } catch(std::runtime_error e) {
-                    std::cerr << e.what() << std::endl;
-                }
-            }
             // send signal to add item to tree
+            // TODO get key
+            hashFuture.waitForFinished();
+            auto hashes = hashFuture.result();
             emit changeTree(group.first, hashes, directory);
         }
         std::cout << timer.elapsed() / 1000.0 << " seconds passed\n";
